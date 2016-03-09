@@ -14,7 +14,7 @@
 
 - [x] Implement horizontal projection profile
 - [x] Implement Region boundary saliency 
-- [ ] Vertical segmentation 
+- [x] Vertical segmentation 
 
 ## Saliency Assesment
 
