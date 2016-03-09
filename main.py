@@ -75,6 +75,20 @@ def verticalSegmentation(rsv,roi,canvas):
             cv2.line(canvas,(int(maxi[i][0]),0),(int(maxi[i][0]),canvas.shape[0]),255,2)
 
     return (maxi,mini),canvas
+
+def sliceImage(segments,im):
+    # for each segment
+    maxi,mini = segments
+    im_segments = []
+    if len(maxi) and len(mini):
+        #print '_____'
+        for i in range(len(maxi)):
+            if i < len(mini):
+                #print maxi[i][0],mini[i][0]
+                im_segments.append(im[:,maxi[i][0]:mini[i][0]])
+        #print 'e_____e'
+    return im_segments
+     
     
 
 
@@ -112,14 +126,15 @@ while active:
         # rsv = rs(hpv)
         if useful:
             segments,segmented = verticalSegmentation(rs(hp(roi)),roi,roi.copy())
+            im_segments = sliceImage(segments,roi.copy())
 
         
-        #cv2.imshow('Temporal Difference',diff)
+        cv2.imshow('Temporal Difference',diff)
         #cv2.imshow('Threshold',thresh)
         #cv2.imshow('BoundingBox',bbox)
-        if useful:
+        #if useful:
             #cv2.imshow('ROI',roi)
-            cv2.imshow('Segmented ROI',segmented)
+            #cv2.imshow('Segmented ROI',segmented)
             #cv2.waitKey(-1)
         cv2.waitKey(40)
 
