@@ -2,7 +2,7 @@
 
 ## Temporal Difference
 
-- [ ] Obtain differene image for motion tracking
+- [x] Obtain differene image for motion tracking
 
 ## Thresholding on Difference Image
 

@@ -4,22 +4,28 @@ import numpy
 #####
 ## tools
 def initCap():
-    return cv2.VideoCapture('../data/cam131.avi')
+    return cv2.VideoCapture('data/cam131.avi')
+def gray(im):
+    return cv2.cvtColor(im,cv2.COLOR_BGR2GRAY)
 ####
 
 ###
 # ___main___
 ###
 cam_feed = initCap()
+# get an image
+active,_ = cam_feed.read()
+prev = gray(_)
+print prev.shape
 
 ###
 # the loop
 ###
-active = True
 while active:
     active,frame = cam_feed.read()
     if active:
-        imshow('CAMFEED',frame)
-        cv2.waitKey(15)
+        cv2.imshow('CAMFEED',cv2.subtract(gray(frame),prev))
+        cv2.waitKey(40)
+        prev = gray(frame)
 
 cv2.destroyAllWindows()
