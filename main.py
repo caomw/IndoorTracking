@@ -14,18 +14,28 @@ def gray(im):
 ###
 cam_feed = initCap()
 # get an image
-active,_ = cam_feed.read()
-prev = gray(_)
-print prev.shape
+active,prev = cam_feed.read()
 
 ###
 # the loop
 ###
 while active:
-    active,frame = cam_feed.read()
+    _,cframe = cam_feed.read()
+    active,fframe = cam_feed.read()
     if active:
-        cv2.imshow('CAMFEED',cv2.subtract(gray(frame),prev))
+        # get difference image
+        #   diff = cv2.subtract(gray(frame),prev)
+        abs_diff1 = cv2.absdiff(gray(prev),gray(cframe))
+        abs_diff2 = cv2.absdiff(gray(cframe),gray(fframe))
+        diff = cv2.bitwise_and(abs_diff1,abs_diff2)
+
+        # thresholding
+        _,thresh = cv2.threshold(abs_diff1,50,255,cv2.THRESH_BINARY)
+        
+        cv2.imshow('Temporal Difference',diff)
+        cv2.imshow('Threshold',thresh)
         cv2.waitKey(40)
-        prev = gray(frame)
+
+        prev = cframe
 
 cv2.destroyAllWindows()
