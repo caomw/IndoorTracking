@@ -1,6 +1,8 @@
 import cv2
 import numpy as np
 
+#from matplotlib import pyplot as plt
+
 #####
 ## tools
 def initCap():
@@ -15,7 +17,7 @@ def diff_abs1(prev,cframe):
     return cv2.absdiff(gray(prev),gray(cframe))
 def boundingBox(thresh,canvas):
     # find bounding rectangle
-    ##
+    ####
     # get non-zero indices
     nzx,nzy = np.nonzero(thresh)
     if any(nzx) and any(nzy):
@@ -25,6 +27,11 @@ def boundingBox(thresh,canvas):
         return canvas,thresh[pt1[1]:pt2[1],pt1[0]:pt2[0]]
     else:
         return canvas,thresh
+
+def plotHP(thresh):
+    plt.plot(np.sum(thresh,axis=0))
+    plt.show()
+
    
 ####
 

@@ -7,13 +7,13 @@
 ## Thresholding on Difference Image
 
 - [ ] Read Rosin's work
-- [ ] Binary thresholding of difference image 
-- [ ] Draw bounding box 
+- [x] Binary thresholding of difference image 
+- [x] Draw bounding box 
 
 ## Horizontal Projection Profile
 
-- [ ] Implement horizontal projection profile
-- [ ] Implement Region boundary saliency 
+- [x] Implement horizontal projection profile
+- [x] Implement Region boundary saliency 
 - [ ] Vertical segmentation 
 
 ## Saliency Assesment
