@@ -8,7 +8,10 @@ def clickEvent(event, x, y, flags, param):
         print 'Loca : ',x, y
         pts.append((x,y))
 # load the image, clone it, and setup the mouse callback function
-image = cv2.resize(cv2.imread('./data/w04.png',0),(0,0),fx=0.5,fy=0.5)
+#image = cv2.resize(cv2.imread('./data/w04.png',0),(0,0),fx=0.5,fy=0.5)
+cap  = cv2.VideoCapture('./data/cam131.avi')
+#image = cv2.imread('./data/w04.png',0)
+_,image  = cap.read()
 clone = image.copy()
 cv2.namedWindow("image")
 cv2.setMouseCallback("image", clickEvent)
@@ -37,7 +40,7 @@ while True:
         #warped = perspective.four_point_transform(image, pts)
         #cv2.
         cv2.imshow('warped',warped)
-        key = cv2.waitKey(-1)
+        cv2.waitKey(-1)
         cv2.imwrite('data/warped.png',warped)
 
         break

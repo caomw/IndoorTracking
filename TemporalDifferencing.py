@@ -1,129 +1,184 @@
 import cv2
 import numpy as np
+import math
 
 import hickle as hkl
-
-'''
-import scipy
-from lib.peakdetect import peakdetect
-from lib.smooth import smoothify
-'''
+import argparse 
+import sys
 
 #####
 ## tools
 def initCap():
-    return cv2.VideoCapture('data/cam131.avi')
-    #return cv2.VideoCapture('data/02.mp4')
+    if args['input']:
+        return cv2.VideoCapture(args['input'])
+    ## enable webcam
+    return cv2.VideoCapture(0)
+
+# grayscale
 def gray(im):
     return cv2.cvtColor(im,cv2.COLOR_BGR2GRAY)
+
+# get absolute differnce between
+#   (prev,future) and (current,future)
+#       detect large changes only
 def diff_abs(prev,cframe,fframe):
     abs_diff1 = cv2.absdiff(gray(prev),gray(fframe))
     abs_diff2 = cv2.absdiff(gray(cframe),gray(fframe))
     return cv2.bitwise_and(abs_diff1,abs_diff2)
+
+# (prev,current) : keep most of the information
+#   detects more changes
 def diff_abs1(prev,cframe):
     return cv2.absdiff(gray(prev),gray(cframe))
+
+# preserve even more information content
 def diff_abs2(prev,cframe,fframe):
     abs_diff1 = cv2.absdiff(gray(prev),gray(cframe))
     abs_diff2 = cv2.absdiff(gray(cframe),gray(fframe))
     return abs_diff1 + abs_diff2
-def boundingBox(thresh,canvas):
-    # find bounding rectangle
-    ####
-    # get non-zero indices
-    nzx,nzy = np.nonzero(thresh)
-    if any(nzx) and any(nzy):
-        pt1 = (np.min(nzy),np.min(nzx))
-        pt2 = (np.max(nzy),np.max(nzx))
-        cv2.rectangle(canvas,pt1,pt2,(0,255,0),2)
-        roi = thresh[pt1[1]:pt2[1],pt1[0]:pt2[0]]
 
-        if np.sum(roi) > 255*1000:
-            return canvas,roi,True
-        else: 
-            return canvas,thresh,False
-    else:
-        return canvas,thresh,False
+# centroid of points in a list of points [contour]
+def centroid(contour):
+    M = cv2.moments(contour)
+    return int(M['m10']/M['m00']),int(M['m01']/M['m00'])
 
-def plotHP(thresh):
-    plt.plot(np.sum(thresh,axis=0))
-    plt.show()
+# Eucledian distance between points
+def dist(p1,p2):
+    return math.sqrt( (p1[0] - p2[0])**2 + (p1[1] - p2[1])**2 )
 
-def hp(im):
-    return np.sum(im,axis=0)
+# Check if two contours should "belong together"
+def find_if_close(cnt1,cnt2):
+    return ( dist(centroid(cnt1) , centroid(cnt2)) < 200 )
 
-def w(x,sigma=10):
-    return np.exp( -np.square( x/sigma ) )
+# Merge contours
+def merge(cnts):
+    hulls = []
+    cnts_len = len(cnts)
+    for i in range(cnts_len):
+        for j in range(cnts_len):
+            if find_if_close(cnts[i],cnts[j]):
+                hulls.append(cv2.convexHull(cnts[i],cnts[j]))
+    return hulls
 
-def rs(hpv):
-    ind = np.arange(hpv.shape[0]).reshape(hpv.shape)
-    rsv = []
-    for x in range(hpv.shape[0]):
-        rsv.append(np.sum( np.multiply(w((ind[:x])[::-1]),hpv[:x]) ) - np.sum( np.multiply(w((ind[x:])[::-1]),hpv[x:]) ))
+# Get the coordinates of the bottom part of each contour
+#   This is highly application specific
+def getCoordinates(cnts,canvas):
+    pts = []
+    if len(cnts) < 1:
+        return pts,canvas
+    for cnt in cnts:
+        npcnt = np.asarray(cnt).reshape([len(cnt),2]).T
+        pt = tuple(npcnt.T[np.argmax(npcnt[1])])
+        pts.append(pt)
+        cv2.circle(canvas,pt,5,(255,0,0),-1)
+    return pts,canvas
 
-    return np.asarray(rsv)
+# Warp perspective to Top View
+#   using transformation matrix 'h'
+#       Set size of top view here : location/camera-orientation specific
+def warpView(image,h,size=(1000,1000)):
+    if args['topview']:
+        size = tuple( [int(i) for i in args['topview'].split('x')] )
+    return cv2.warpPerspective(image, h, size)
 
-def verticalSegmentation(rsv,roi,canvas):
-    # smooth curve
-    #maxi,mini = peakdetect(scipy.signal.savgol_filter(rsv,55,3),lookahead=100)
-    maxi,mini = peakdetect(smoothify(rsv),lookahead=120)
+# Mat multiplication of ( h x point ) gives
+#   the location of point in Top View
+#       normalization of point to be in form
+#          h x [x1,y1,1] = [x2,y2,1] 
+def tranformCoordinates(pts,canvas):
+    tpts = []
+    if len(pts) > 0:
+        for pt in pts:
+            tpt = np.dot(h,(pt[0],pt[1],1))
+            tpt = (tpt/tpt[2]).astype('int32')
+            tpts.append(tpt)
+            # negative values are a possibility
+            dpt = ( max(0,tpt[0]),max(0,tpt[1]) )
+            cv2.circle(canvas,dpt,15,(0,0,255),-1)
+    return tpts,canvas
+    
+def _build_args():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("-i", "--input", help="A video file as input")
+    ap.add_argument("-t", "--threshold", help="Set a threshold value once, which will be stored persistently")
+    ap.add_argument("-d", "--cam",help="Cam device number : typically 0")
+    ap.add_argument("-c", "--configure",help="Boolean : Configure transformation matrix by homography")
+    ap.add_argument("-l", "--dilate",help="Dilation iterations count: (1-25)")
+    ap.add_argument("-v", "--topview",help="Dimensions of Top View : a,b ")
+    args = vars(ap.parse_args())
 
-    for i in range(len(maxi)):
-        if i < len(mini):
-            # check each segment for information content 
-            info_content = np.sum(roi[:,maxi[i][0]:mini[i][0]])
-            #if  info_content> 20000:
-            #    print info_content
-            cv2.line(canvas,(int(mini[i][0]),0),(int(mini[i][0]),canvas.shape[0]),255,2)
-            cv2.line(canvas,(int(maxi[i][0]),0),(int(maxi[i][0]),canvas.shape[0]),255,2)
+    return args
 
-    return (maxi,mini),canvas
+def clickEvent(event, x, y, flags, param):
+    global pts
+    if event == cv2.EVENT_LBUTTONDOWN:
+        print 'Loca : ',x, y
+        pts.append((x,y))
 
-def sliceImage(segments,im):
-    # for each segment
-    maxi,mini = segments
-    im_segments = []
-    if len(maxi) and len(mini):
-        #print '_____'
-        for i in range(len(maxi)):
-            if i < len(mini):
-                #print maxi[i][0],mini[i][0]
-                im_segments.append(im[:,maxi[i][0]:mini[i][0]])
-        #print 'e_____e'
-    return im_segments
+def config_loop():
+    global pts 
+    active,image = cam_feed.read()
 
-def candidates(im_segments):
-    candidates = []
-    for im_segment in im_segments:
-        candidates.append(np.nonzero(im_segment))
-    print len(candidates)
-    return candidates
-     
-def saliency(pixel_candidates):
-    npcand = np.asarray(pixel_candidates)
-    print npcand.shape
+    while active:
+        cv2.imshow('Perspective',image)
+        key = cv2.waitKey(1) & 0xFF
+        corres_pts = np.array( [ (0,0), (image.shape[1],0),(image.shape[1],image.shape[0]),(0,image.shape[0]) ] )
 
-def warpView(image):
-    h = config['h']
-    #return cv2.warpPerspective(image, h, (image.shape[1],image.shape[0]) ) 
-    return cv2.warpPerspective(image, h, (1000,1000) ) 
-   
-####
+        if len(pts) == 4:
+            pts = np.array(pts)
+            for (x, y) in pts:
+                cv2.circle(image, (x, y), 5, (0, 255, 0), -1)
+
+            h, _ = cv2.findHomography(pts.astype('float32'), corres_pts.astype('float32'))
+            print 'Tranformation Matrix : ',h
+            # save to config file
+            hkl.dump({'h' : h},'.config')
+            # warp image
+            warped = cv2.warpPerspective(image, h, (image.shape[1],image.shape[0]) )
+            cv2.imshow('Perspective',image)
+            cv2.imshow('warped',warped)
+            # pause
+            cv2.waitKey(-1)
+            break
+ 
 
 ###
 # __name__ : ___main___
 ###
 
 ###
-# load configuration
-###
-config = hkl.load('.config')
+# Parse Arguments
+args = _build_args()
 
 ###
 # get feed
-###
 cam_feed = initCap()
-# get an image
-active,prev = cam_feed.read()
+
+pts = []
+
+###
+# load configuration
+if args['configure']:
+    cv2.namedWindow("Perspective")
+    cv2.setMouseCallback("Perspective",clickEvent)
+    config_loop()
+    print 'Configuration Done. Now run the program without --configure option'
+    sys.exit()
+else:
+    config = hkl.load('.config')
+    # configuration
+    config = hkl.load('.config')
+    # homography transformation matrix
+    h = config['h']
+    # get an image
+    active,prev = cam_feed.read()
+    # Get warp view
+    warped = warpView(prev,h)
+    cv2.imshow('warped',warped)
+
+
+# delay for the loop
+delay = 40
 
 ###
 # the loop
@@ -133,51 +188,73 @@ while active:
     active,fframe = cam_feed.read()
     if active:
         # get difference image
-        #   diff = cv2.subtract(gray(frame),prev)
         diff = diff_abs(prev,cframe,fframe)
-        #   diff = diff_abs1(prev,cframe)
-        # diff = diff_abs2(prev,cframe,fframe)
 
         # thresholding + histogram equalization
-        _,thresh = cv2.threshold(diff,15,255,cv2.THRESH_BINARY)
+        #   threshold 'th' => heuristic
+        th = 15
+        if args['threshold']:
+            th = int(args['threshold'])
+        _,thresh = cv2.threshold(diff,th,255,cv2.THRESH_BINARY)
         thresh = cv2.equalizeHist(thresh)
 
         # noise removal
         #thresh = cv2.fastNlMeansDenoising(thresh)
-        element = cv2.getStructuringElement(cv2.MORPH_CROSS,(3,3))
+        # >> comment : denoising is too slow; ironically named 'fast*'
+
+        ###
+        # erosion for noise removal
+        element = cv2.getStructuringElement(cv2.MORPH_CROSS,(2,2))
         thresh = cv2.erode(thresh,element)
-        thresh = cv2.dilate(thresh, None, iterations=15)
-        #bbox,roi,useful = boundingBox(thresh,cframe.copy())
+        # dilation
+        #   10 -> heuristic
+        dil = 10
+        if args['dilate']:
+            dil = int(args['dilate'])
+        thresh = cv2.dilate(thresh, None, iterations=dil)
 
-        # calculate horizontal projection profile
-        #   >> comment : seems to work fine in real time
-        # hpv = hp(roi)
-        # rsv = rs(hpv)
-        '''
-        if useful:
-            segments,segmented = verticalSegmentation(rs(hp(roi)),roi,roi.copy())
-            im_segments = sliceImage(segments,roi.copy())
-            if len(im_segments):
-                pixel_candidates = candidates(im_segments)
-                #saliency(pixel_candidates)
-        '''
+        # operate on the threshold image
+        #   gather contours
+        cnts, _ = cv2.findContours(thresh.copy(), cv2.RETR_EXTERNAL, 2)
 
-        
-        #cv2.imshow('Temporal Difference',diff)
+        # merge contours that are closer, together
+        #   using ConvexHull which is surprisingly fast
+        hulls = merge(cnts)
+        # remove small contours 
+        #   area threshold is a heuristic, could be adjusted
+        hulls_filtered = [x for x in hulls if cv2.contourArea(x) > 5000]
+
+        # get a copy of current frame for drawing contours
+        canvas = cframe.copy()
+        cv2.drawContours(canvas,hulls_filtered,-1,(0,255,0),2)
+        coord,canvas = getCoordinates(hulls_filtered,canvas)
+
+        # transformed coordinates
+        #   Transform coordinates from Perspective to Top View
+        #       Mat product : h x coord
+        tcoords,topview = tranformCoordinates(coord,warped.copy())
+
+        # display Threshold, Canvas, Top View
         cv2.imshow('Threshold',thresh)
-        #cv2.imshow('BoundingBox',bbox)
-        '''
-        if useful:
-            #cv2.imshow('ROI',roi)
-            cv2.imshow('Segmented ROI',segmented)
-            cv2.waitKey(-1)
-        '''
-        k = cv2.waitKey(40)
+        cv2.imshow('Canvas',canvas)
+        cv2.imshow('warped',topview)
+
+        k = cv2.waitKey(delay)
         if k == 27:
             break
+        elif k == ord('p'):
+            cv2.waitKey(-1)
         elif k == ord('s'):
             cv2.imwrite('thresh.png',thresh)
+            cv2.imwrite('canvas.png',canvas)
+            cv2.imwrite('topview.png',topview)
+        elif k == ord('+'):
+            delay = min(200,delay+5)
+        elif k == ord('-'):
+            delay = max(1,delay-5)
 
+        # last frame
         prev = cframe
 
+cam_feed.release()
 cv2.destroyAllWindows()
