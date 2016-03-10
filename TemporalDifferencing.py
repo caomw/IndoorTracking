@@ -1,11 +1,13 @@
 import cv2
 import numpy as np
 
-#from matplotlib import pyplot as plt
+import hickle as hkl
 
+'''
 import scipy
 from lib.peakdetect import peakdetect
 from lib.smooth import smoothify
+'''
 
 #####
 ## tools
@@ -88,15 +90,36 @@ def sliceImage(segments,im):
                 im_segments.append(im[:,maxi[i][0]:mini[i][0]])
         #print 'e_____e'
     return im_segments
+
+def candidates(im_segments):
+    candidates = []
+    for im_segment in im_segments:
+        candidates.append(np.nonzero(im_segment))
+    print len(candidates)
+    return candidates
      
-    
+def saliency(pixel_candidates):
+    npcand = np.asarray(pixel_candidates)
+    print npcand.shape
 
-
+def warpView(image):
+    h = config['h']
+    #return cv2.warpPerspective(image, h, (image.shape[1],image.shape[0]) ) 
+    return cv2.warpPerspective(image, h, (1000,1000) ) 
    
 ####
 
 ###
-# ___main___
+# __name__ : ___main___
+###
+
+###
+# load configuration
+###
+config = hkl.load('.config')
+
+###
+# get feed
 ###
 cam_feed = initCap()
 # get an image
@@ -115,28 +138,45 @@ while active:
         #   diff = diff_abs1(prev,cframe)
         # diff = diff_abs2(prev,cframe,fframe)
 
-        # thresholding
+        # thresholding + histogram equalization
         _,thresh = cv2.threshold(diff,15,255,cv2.THRESH_BINARY)
+        thresh = cv2.equalizeHist(thresh)
 
-        bbox,roi,useful = boundingBox(thresh,cframe.copy())
+        # noise removal
+        #thresh = cv2.fastNlMeansDenoising(thresh)
+        element = cv2.getStructuringElement(cv2.MORPH_CROSS,(3,3))
+        thresh = cv2.erode(thresh,element)
+        thresh = cv2.dilate(thresh, None, iterations=15)
+        #bbox,roi,useful = boundingBox(thresh,cframe.copy())
 
         # calculate horizontal projection profile
         #   >> comment : seems to work fine in real time
         # hpv = hp(roi)
         # rsv = rs(hpv)
+        '''
         if useful:
             segments,segmented = verticalSegmentation(rs(hp(roi)),roi,roi.copy())
             im_segments = sliceImage(segments,roi.copy())
+            if len(im_segments):
+                pixel_candidates = candidates(im_segments)
+                #saliency(pixel_candidates)
+        '''
 
         
-        cv2.imshow('Temporal Difference',diff)
-        #cv2.imshow('Threshold',thresh)
+        #cv2.imshow('Temporal Difference',diff)
+        cv2.imshow('Threshold',thresh)
         #cv2.imshow('BoundingBox',bbox)
-        #if useful:
+        '''
+        if useful:
             #cv2.imshow('ROI',roi)
-            #cv2.imshow('Segmented ROI',segmented)
-            #cv2.waitKey(-1)
-        cv2.waitKey(40)
+            cv2.imshow('Segmented ROI',segmented)
+            cv2.waitKey(-1)
+        '''
+        k = cv2.waitKey(40)
+        if k == 27:
+            break
+        elif k == ord('s'):
+            cv2.imwrite('thresh.png',thresh)
 
         prev = cframe
 
