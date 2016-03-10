@@ -5,6 +5,7 @@ import math
 import hickle as hkl
 import argparse 
 import sys
+import os.path
 
 #####
 ## tools
@@ -104,7 +105,7 @@ def _build_args():
     ap.add_argument("-d", "--cam",help="Cam device number : typically 0")
     ap.add_argument("-c", "--configure",help="Boolean : Configure transformation matrix by homography")
     ap.add_argument("-l", "--dilate",help="Dilation iterations count: (1-25)")
-    ap.add_argument("-v", "--topview",help="Dimensions of Top View : a,b ")
+    ap.add_argument("-v", "--topview",help="Dimensions of Top View : axb ")
     args = vars(ap.parse_args())
 
     return args
@@ -165,16 +166,20 @@ if args['configure']:
     print 'Configuration Done. Now run the program without --configure option'
     sys.exit()
 else:
-    config = hkl.load('.config')
-    # configuration
-    config = hkl.load('.config')
-    # homography transformation matrix
-    h = config['h']
-    # get an image
-    active,prev = cam_feed.read()
-    # Get warp view
-    warped = warpView(prev,h)
-    cv2.imshow('warped',warped)
+    if os.path.isfile('.config'):
+        config = hkl.load('.config')
+        # configuration
+        config = hkl.load('.config')
+        # homography transformation matrix
+        h = config['h']
+        # get an image
+        active,prev = cam_feed.read()
+        # Get warp view
+        warped = warpView(prev,h)
+        cv2.imshow('warped',warped)
+    else:
+        print 'No Configuration file found. Run the program with \"--configure True\" switch'
+        sys.exit()
 
 
 # delay for the loop
