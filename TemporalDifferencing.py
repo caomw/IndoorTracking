@@ -13,7 +13,10 @@ def initCap():
     if args['input']:
         return cv2.VideoCapture(args['input'])
     ## enable webcam
-    return cv2.VideoCapture(0)
+    elif args['cam']:
+        return cv2.VideoCapture(int(args['cam']))
+    else:
+        return cv2.VideoCapture(0)
 
 # grayscale
 def gray(im):
@@ -49,7 +52,7 @@ def dist(p1,p2):
 
 # Check if two contours should "belong together"
 def find_if_close(cnt1,cnt2):
-    return ( dist(centroid(cnt1) , centroid(cnt2)) < 200 )
+    return ( dist(centroid(cnt1) , centroid(cnt2)) < 100 )
 
 # Merge contours
 def merge(cnts):
@@ -101,7 +104,7 @@ def tranformCoordinates(pts,canvas):
 def _build_args():
     ap = argparse.ArgumentParser()
     ap.add_argument("-i", "--input", help="A video file as input")
-    ap.add_argument("-t", "--threshold", help="Set a threshold value once, which will be stored persistently")
+    ap.add_argument("-t", "--threshold", help="Set a threshold value")
     ap.add_argument("-d", "--cam",help="Cam device number : typically 0")
     ap.add_argument("-c", "--configure",help="Boolean : Configure transformation matrix by homography")
     ap.add_argument("-l", "--dilate",help="Dilation iterations count: (1-25)")
@@ -133,7 +136,10 @@ def config_loop():
             h, _ = cv2.findHomography(pts.astype('float32'), corres_pts.astype('float32'))
             print 'Tranformation Matrix : ',h
             # save to config file
-            hkl.dump({'h' : h},'.config')
+            config = { 'h' : h }
+            config['threshold'] = 15
+            config['dilate'] = 10
+            hkl.dump(config,'.config')
             # warp image
             warped = cv2.warpPerspective(image, h, (image.shape[1],image.shape[0]) )
             cv2.imshow('Perspective',image)
@@ -197,9 +203,11 @@ while active:
 
         # thresholding + histogram equalization
         #   threshold 'th' => heuristic
-        th = 15
+        th = config['threshold']
         if args['threshold']:
             th = int(args['threshold'])
+            config['threshold'] = th
+            hkl.dump(config,'.config')
         _,thresh = cv2.threshold(diff,th,255,cv2.THRESH_BINARY)
         thresh = cv2.equalizeHist(thresh)
 
@@ -213,9 +221,11 @@ while active:
         thresh = cv2.erode(thresh,element)
         # dilation
         #   10 -> heuristic
-        dil = 10
+        dil = config['dilate']
         if args['dilate']:
             dil = int(args['dilate'])
+            config['dilate'] = dil
+            hkl.dump(config,'.config')
         thresh = cv2.dilate(thresh, None, iterations=dil)
 
         # operate on the threshold image
@@ -227,7 +237,7 @@ while active:
         hulls = merge(cnts)
         # remove small contours 
         #   area threshold is a heuristic, could be adjusted
-        hulls_filtered = [x for x in hulls if cv2.contourArea(x) > 5000]
+        hulls_filtered = [x for x in hulls if cv2.contourArea(x) > 20000]
 
         # get a copy of current frame for drawing contours
         canvas = cframe.copy()
